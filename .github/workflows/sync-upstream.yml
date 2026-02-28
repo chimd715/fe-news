@@ -1,0 +1,48 @@
+name: Sync Fork with Upstream
+
+on:
+  schedule:
+    # 매일 한국시간 오전 9시 (UTC 0시)에 실행
+    - cron: '0 0 * * *'
+  workflow_dispatch: # 수동 실행 가능
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Check sync status
+        id: check
+        run: |
+          git remote add upstream https://github.com/naver/fe-news.git
+          git fetch upstream master
+
+          BEHIND=$(git rev-list --count HEAD..upstream/master)
+          AHEAD=$(git rev-list --count upstream/master..HEAD)
+
+          echo "behind=$BEHIND" >> $GITHUB_OUTPUT
+          echo "ahead=$AHEAD" >> $GITHUB_OUTPUT
+          echo "📊 Status: $BEHIND commits behind, $AHEAD commits ahead of upstream"
+
+      - name: Sync with upstream
+        if: steps.check.outputs.behind != '0'
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+
+          echo "🔄 Syncing ${{ steps.check.outputs.behind }} commits from upstream..."
+          git merge upstream/master --no-edit
+          git push origin master
+          echo "✅ Successfully synced with upstream!"
+
+      - name: Already up to date
+        if: steps.check.outputs.behind == '0'
+        run: echo "✅ Already up to date with upstream!"
